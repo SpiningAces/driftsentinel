@@ -30,27 +30,18 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Smoke test — library API
+        shell: bash
         run: |
           python -c "import driftsentinel; print('version:', driftsentinel.__version__)"
-          python -c "
-          import driftsentinel as ds
-          # Clean spec → 100
-          a = ds.compute_adi({'oasdiff':{},'vacuum':{'by_severity':{}},'schemathesis':{}}, **ds.ADI_DEFAULTS)
-          assert a['score'] == 100.0, f'clean: expected 100, got {a[\"score\"]}'
-          # Apocalypse → 0
-          a = ds.compute_adi({'oasdiff':{'breaking_count':9999},'vacuum':{'by_severity':{'error':9999,'warn':9999}},'schemathesis':{'failures':9999}}, **ds.ADI_DEFAULTS)
-          assert a['score'] == 0.0, f'apocalypse: expected 0, got {a[\"score\"]}'
-          # 1 breaking → 90
-          a = ds.compute_adi({'oasdiff':{'breaking_count':1},'vacuum':{'by_severity':{}},'schemathesis':{}}, **ds.ADI_DEFAULTS)
-          assert a['score'] == 90.0, f'1-breaking: expected 90, got {a[\"score\"]}'
-          print('all clamp tests pass')
-          "
+          python -m pytest tests/ -v
 
       - name: CLI smoke
+        shell: bash
         run: |
           driftsentinel --help
           oas-sentinel --help
-          driftsentinel keygen --out /tmp/test-key
+          mkdir -p /tmp/dskey
+          driftsentinel keygen --out /tmp/dskey/test
 
   build:
     name: Build distributions
