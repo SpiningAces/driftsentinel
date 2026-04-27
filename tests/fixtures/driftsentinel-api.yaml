@@ -12,6 +12,7 @@ info:
   contact:
     name: Drift Sentinel
     url: https://github.com/SpiningAces/driftsentinel
+    email: support@driftsentinel.ai
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -41,6 +42,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
+              example:
+                status: ok
+                version: 0.0.1
+                uptime_seconds: 3600
 
   /audits:
     post:
@@ -68,11 +73,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuditAccepted" }
+              example:
+                audit_id: 7e57c0de-1234-5678-90ab-cdef12345678
+                status: queued
+                queued_at: "2026-04-27T22:00:00Z"
         "400":
           description: Malformed request.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+              example:
+                code: invalid_spec_url
+                message: spec_url must be an absolute URL
+                request_id: req_01JX8AY3K7C
         "401":
           description: Authentication required.
         "429":
@@ -85,6 +98,7 @@ paths:
         required: true
         description: Unique audit identifier returned by POST /audits.
         schema: { type: string, format: uuid }
+        example: 7e57c0de-1234-5678-90ab-cdef12345678
     get:
       tags: [audits]
       summary: Retrieve an audit
@@ -96,16 +110,39 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuditReport" }
+              example:
+                audit_id: 7e57c0de-1234-5678-90ab-cdef12345678
+                drift_score: 75.0
+                counts:
+                  breaking: 0
+                  vacuum-error: 2
+                  vacuum-warn: 15618
+                  fuzz: 0
+                breaches: []
+                signature:
+                  alg: ed25519
+                  sig: a1b2c3d4e5f6789012345678abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abdeadbeef
+                  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+                  pubkey_pem: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----\n"
+                report_pdf_url: https://api.driftsentinel.ai/v1/audits/7e57c0de-1234-5678-90ab-cdef12345678/report.pdf
         "202":
           description: Audit still in progress.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuditAccepted" }
+              example:
+                audit_id: 7e57c0de-1234-5678-90ab-cdef12345678
+                status: running
+                queued_at: "2026-04-27T22:00:00Z"
         "404":
           description: Audit not found.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+              example:
+                code: audit_not_found
+                message: No audit with that ID
+                request_id: req_01JX8AY3K7C
 
   /audits/{audit_id}/report.pdf:
     parameters:
@@ -114,6 +151,7 @@ paths:
         required: true
         description: Unique audit identifier.
         schema: { type: string, format: uuid }
+        example: 7e57c0de-1234-5678-90ab-cdef12345678
     get:
       tags: [audits]
       summary: Download the signed PDF report
@@ -130,11 +168,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+              example:
+                code: audit_not_found
+                message: No audit with that ID
+                request_id: req_01JX8AY3K7C
 
   /keys:
     get:
       tags: [keys]
       summary: List signing keypairs for the current tenant
+      description: Returns every active ed25519 keypair owned by the authenticated tenant.
       operationId: list_keys
       responses:
         "200":
@@ -144,9 +187,15 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/KeyDescriptor" }
+              example:
+                - key_id: 7e57c0de-1234-5678-90ab-cdef12345678
+                  alg: ed25519
+                  pubkey_pem: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----\n"
+                  created_at: "2026-04-27T22:00:00Z"
     post:
       tags: [keys]
       summary: Generate a new ed25519 signing keypair
+      description: Creates a new keypair; the private key is held server-side and never returned.
       operationId: create_key
       responses:
         "201":
@@ -154,6 +203,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/KeyDescriptor" }
+              example:
+                key_id: 7e57c0de-1234-5678-90ab-cdef12345678
+                alg: ed25519
+                pubkey_pem: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----\n"
+                created_at: "2026-04-27T22:00:00Z"
 
 components:
   schemas:
@@ -166,13 +220,20 @@ components:
           type: string
           enum: [ok, degraded, down]
           description: Liveness state.
+          example: ok
         version:
           type: string
           description: Drift Sentinel package version.
+          example: 0.0.1
         uptime_seconds:
           type: integer
           minimum: 0
           description: Seconds since the worker started.
+          example: 3600
+      example:
+        status: ok
+        version: 0.0.1
+        uptime_seconds: 3600
 
     AuditRequest:
       type: object
@@ -183,26 +244,35 @@ components:
           type: string
           format: uri
           description: Public URL of the OpenAPI spec to audit.
+          example: https://example.com/openapi.yaml
         previous_spec_url:
           type: string
           format: uri
           description: Optional previous version for breaking-change detection.
+          example: https://example.com/openapi.previous.yaml
         live_url:
           type: string
           format: uri
           description: Optional base URL of the live API for runtime drift detection.
+          example: https://api.example.com
         live_headers:
           type: object
           additionalProperties: { type: string }
           description: HTTP headers sent on every probe of the live API (auth, gate keys).
+          example:
+            Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+            X-Tenant-Id: tenant_01JX8AY3K7C
         fail_on:
           type: object
           description: Threshold map; if any threshold is breached, the audit is marked failed.
           properties:
-            adi:        { type: number, minimum: 0, maximum: 100 }
-            breaking:   { type: integer, minimum: 0 }
+            adi:          { type: number, minimum: 0, maximum: 100 }
+            breaking:     { type: integer, minimum: 0 }
             vacuum-error: { type: integer, minimum: 0 }
-            fuzz:       { type: integer, minimum: 0 }
+            fuzz:         { type: integer, minimum: 0 }
+          example:
+            adi: 80
+            breaking: 1
 
     AuditAccepted:
       type: object
@@ -213,14 +283,17 @@ components:
           type: string
           format: uuid
           description: Server-assigned identifier for this audit.
+          example: 7e57c0de-1234-5678-90ab-cdef12345678
         status:
           type: string
           enum: [queued, running, complete, failed]
           description: Current processing state.
+          example: queued
         queued_at:
           type: string
           format: date-time
           description: Server timestamp when the audit was queued.
+          example: "2026-04-27T22:00:00Z"
 
     AuditReport:
       type: object
@@ -231,11 +304,13 @@ components:
           type: string
           format: uuid
           description: Identifier matching the original request.
+          example: 7e57c0de-1234-5678-90ab-cdef12345678
         drift_score:
           type: number
           minimum: 0
           maximum: 100
           description: ADI 0-100. 100 is clean. 0 is catastrophic.
+          example: 75.0
         counts:
           type: object
           description: Raw counts feeding into the Drift Score.
@@ -244,16 +319,23 @@ components:
             vacuum-error: { type: integer, minimum: 0 }
             vacuum-warn:  { type: integer, minimum: 0 }
             fuzz:         { type: integer, minimum: 0 }
+          example:
+            breaking: 0
+            vacuum-error: 2
+            vacuum-warn: 15618
+            fuzz: 0
         breaches:
           type: array
           items: { type: string }
           description: Strings describing each fail-on threshold that was breached.
+          example: []
         signature:
           $ref: "#/components/schemas/Signature"
         report_pdf_url:
           type: string
           format: uri
           description: URL of the signed PDF report.
+          example: https://api.driftsentinel.ai/v1/audits/7e57c0de-1234-5678-90ab-cdef12345678/report.pdf
 
     Signature:
       type: object
@@ -264,17 +346,21 @@ components:
           type: string
           enum: [ed25519]
           description: Signature algorithm.
+          example: ed25519
         sig:
           type: string
           pattern: "^[0-9a-f]+$"
           description: Hex-encoded signature bytes.
+          example: a1b2c3d4e5f6789012345678abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abdeadbeef
         sha256:
           type: string
           pattern: "^[0-9a-f]{64}$"
           description: SHA-256 of the canonical report JSON before signing.
+          example: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
         pubkey_pem:
           type: string
           description: PEM-encoded public key the signature verifies against.
+          example: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----\n"
 
     KeyDescriptor:
       type: object
@@ -285,17 +371,21 @@ components:
           type: string
           format: uuid
           description: Unique identifier for this keypair.
+          example: 7e57c0de-1234-5678-90ab-cdef12345678
         alg:
           type: string
           enum: [ed25519]
           description: Signature algorithm.
+          example: ed25519
         pubkey_pem:
           type: string
           description: PEM-encoded public key.
+          example: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----\n"
         created_at:
           type: string
           format: date-time
           description: When this keypair was generated.
+          example: "2026-04-27T22:00:00Z"
 
     Error:
       type: object
@@ -305,12 +395,15 @@ components:
         code:
           type: string
           description: Machine-readable error code.
+          example: invalid_spec_url
         message:
           type: string
           description: Human-readable error description.
+          example: spec_url must be an absolute URL
         request_id:
           type: string
           description: Server-assigned trace id for this request.
+          example: req_01JX8AY3K7C
 
   securitySchemes:
     bearerAuth:

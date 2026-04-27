@@ -102,7 +102,7 @@ Calibration data, run against publicly available OpenAPI specs. **Drift Sentinel
 
 | API                    | Drift Score | Headline finding                                                       |
 | ---------------------- | ----------: | ---------------------------------------------------------------------- |
-| **Drift Sentinel** (self) |    **94.2** | 0 errors, 23 warnings (18 missing examples) — yes, we ran our own tool on our own spec |
+| **Drift Sentinel** (self) |    **98.8** | 0 errors, 7 warnings — we ran our own tool on our own spec, twice |
 | **Slack**              |    **92.8** | 0 errors, 29 warnings — exceptionally clean (Swagger 2.0 vintage, well-maintained) |
 | **GitHub**             |    **80.0** | 1 structural error in 746 endpoints                                    |
 | **Stripe**             |    **75.0** | 2 errors, 15,618 stylistic warnings (top rule was a false-positive that auto-naming detection now suppresses) |
