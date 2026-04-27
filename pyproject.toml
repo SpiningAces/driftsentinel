@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "driftsentinel"
+version = "0.0.1"
+description = "Drift Sentinel — measures the gap between what your OpenAPI spec promises and what your live API actually does. Preview release."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Deep Vector" }]
+keywords = ["openapi", "api", "drift", "spec", "ci", "schemathesis", "vacuum", "oasdiff"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "cryptography>=42",
+    "reportlab>=4",
+    "pyyaml>=6",
+    "schemathesis>=4",
+]
+
+[project.optional-dependencies]
+dev = ["build", "twine", "pytest"]
+
+[project.urls]
+Homepage = "https://github.com/SpiningAces/driftsentinel"
+"Customer Demo" = "https://github.com/SpiningAces/driftsentinel/blob/main/docs/demo.md"
+
+[project.scripts]
+driftsentinel = "driftsentinel.cli:main"
+oas-sentinel = "driftsentinel.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["driftsentinel*"]
