@@ -96,27 +96,38 @@ breaches: adi=10 ≤ 80, breaking=3 ≥ 1, fuzz=10 ≥ 5
 
 ---
 
-## Two real proof points (run this session against public specs)
+## The buyer ladder — eight real public APIs, ranked
 
-### 🟡 Stripe — Drift Score **75.0**
+Calibration data, run against publicly available OpenAPI specs. **Drift Sentinel ate its own dog food too.**
 
-Stripe maintains one of the most carefully published OpenAPI specs in the industry — they expose it for SDK generation. Drift Sentinel still found:
+| API                    | Drift Score | Headline finding                                                       |
+| ---------------------- | ----------: | ---------------------------------------------------------------------- |
+| **Drift Sentinel** (self) |    **94.2** | 0 errors, 23 warnings (18 missing examples) — yes, we ran our own tool on our own spec |
+| **Slack**              |    **92.8** | 0 errors, 29 warnings — exceptionally clean (Swagger 2.0 vintage, well-maintained) |
+| **GitHub**             |    **80.0** | 1 structural error in 746 endpoints                                    |
+| **Stripe**             |    **75.0** | 2 errors, 15,618 stylistic warnings (top rule was a false-positive that auto-naming detection now suppresses) |
+| **OpenAI**             |    **60.0** | 19 structural errors                                                   |
+| **Plaid**              |    **60.0** | 19 errors, 7,157 warnings                                              |
+| **DigitalOcean**       |    **60.0** | 1,394 vacuum errors at cap                                             |
+| **Deep Vector internal** | **50.0**  | 1 error + **18 runtime drift failures** (this is what runtime detection adds) |
 
-- **2 structural errors** in the document
-- **15,618 stylistic warnings** (top rules: camel-case-properties, description-duplication, missing examples)
+**Where does your API land on this ladder?**
 
-The two errors are buried in 15K warnings — the kind of finding that almost never surfaces in a manual review. Drift Sentinel pulls them to the top of the report.
+Three things to read off this table:
 
-### 🟠 Plaid — Drift Score **60.0**
+1. **The score range is real.** Slack and our own spec are at the top. Most teams cluster between 50 and 80. A score below 50 is a release-blocker conversation.
+2. **Errors and warnings rank differently.** Stripe at 75 has only 2 errors but 15K warnings; OpenAI at 60 has 19 errors. The formula weights errors much more heavily than style — caps prevent warning floods from drowning out signal.
+3. **Runtime drift is the part nobody else measures.** The Deep Vector score includes an `--url` probe of the live API, which surfaced 18 endpoints whose live response codes don't match the spec. Stripe, GitHub, and the others were scored from spec alone because we don't have prod keys. **With runtime drift turned on, scores typically drop another 15–30 points.** That gap is the moat.
 
-Plaid's public API spec is also well-maintained but scores lower:
+> *Footnote on Twilio:* their public OpenAPI is so large and structurally complex that vacuum's parser declined to open it at all. That's also a finding — and itself a reason a buyer would want a Drift Sentinel run before integrating.
 
-- **19 structural errors** (cap engaged at −25)
-- **7,157 stylistic warnings** (cap engaged at −15)
+---
 
-Plaid's score reflects a denser concentration of structural issues per spec mass. A buyer reading this would say: "If Plaid is at 60 and Stripe is at 75, where am I?"
+### How to read the ladder for your own API
 
-> *Both specs were scored without the runtime drift signal because we don't have keys for their production APIs. With drift detection enabled against your own API, scores typically drop another 15–30 points — that's the part nobody else measures.*
+If you score where Slack scores (90+), you have an exceptionally well-maintained spec. Drift Sentinel becomes a release-time gate, not a remediation tool. If you score where Stripe and GitHub score (75–80), you have a clean spec with a small number of high-impact issues hiding behind style noise — that's typical for thoughtful teams who haven't formalized the audit step. If you score where OpenAI, Plaid, or DigitalOcean score (~60), you have 15–30 documented issues to work through. Below 50 means there's structural work plus active runtime drift — typical of any service older than two years that hasn't had spec hygiene as a quarterly priority.
+
+The Drift Sentinel position is that 90+ should be the bar, and that the only continuous way to hold it is automation. Manual review doesn't scale to a spec that changes every release.
 
 ---
 

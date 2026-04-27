@@ -1,0 +1,322 @@
+openapi: 3.1.0
+info:
+  title: Drift Sentinel REST API
+  description: |
+    Hosted Drift Sentinel — submit your OpenAPI spec, get back a signed Drift Score
+    audit report. This is the spec for Drift Sentinel's planned hosted service (V2);
+    the CLI ships first.
+
+    The spec also serves as our self-test fixture: `driftsentinel audit` is run against
+    this file in CI, and we publish the result alongside every release.
+  version: 0.1.0
+  contact:
+    name: Drift Sentinel
+    url: https://github.com/SpiningAces/driftsentinel
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+servers:
+  - url: https://api.driftsentinel.ai/v1
+    description: Production
+  - url: https://staging.api.driftsentinel.ai/v1
+    description: Staging
+tags:
+  - name: audits
+    description: Submit specs and retrieve signed audit reports.
+  - name: keys
+    description: Manage signing keypairs for your tenant.
+  - name: health
+    description: Service liveness and version.
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: Returns service health and version. Public, unauthenticated.
+      operationId: get_health
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /audits:
+    post:
+      tags: [audits]
+      summary: Submit an audit
+      description: |
+        Submit an OpenAPI spec (and optionally a previous version) for analysis.
+        Returns an audit ID; poll `/audits/{id}` for the signed report.
+      operationId: create_audit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuditRequest" }
+            example:
+              spec_url: https://example.com/openapi.yaml
+              previous_spec_url: https://example.com/openapi.previous.yaml
+              live_url: https://api.example.com
+              fail_on:
+                adi: 80
+                breaking: 1
+      responses:
+        "202":
+          description: Audit accepted, processing asynchronously.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditAccepted" }
+        "400":
+          description: Malformed request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Authentication required.
+        "429":
+          description: Rate limit exceeded.
+
+  /audits/{audit_id}:
+    parameters:
+      - name: audit_id
+        in: path
+        required: true
+        description: Unique audit identifier returned by POST /audits.
+        schema: { type: string, format: uuid }
+    get:
+      tags: [audits]
+      summary: Retrieve an audit
+      description: Returns the signed report when the audit is complete.
+      operationId: get_audit
+      responses:
+        "200":
+          description: Audit complete.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditReport" }
+        "202":
+          description: Audit still in progress.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditAccepted" }
+        "404":
+          description: Audit not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /audits/{audit_id}/report.pdf:
+    parameters:
+      - name: audit_id
+        in: path
+        required: true
+        description: Unique audit identifier.
+        schema: { type: string, format: uuid }
+    get:
+      tags: [audits]
+      summary: Download the signed PDF report
+      description: Returns the binary PDF with the embedded ed25519 signature.
+      operationId: get_audit_pdf
+      responses:
+        "200":
+          description: Signed PDF report.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404":
+          description: Audit not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /keys:
+    get:
+      tags: [keys]
+      summary: List signing keypairs for the current tenant
+      operationId: list_keys
+      responses:
+        "200":
+          description: Array of public-key descriptors.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/KeyDescriptor" }
+    post:
+      tags: [keys]
+      summary: Generate a new ed25519 signing keypair
+      operationId: create_key
+      responses:
+        "201":
+          description: New keypair created. Public key returned; private key is held server-side.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyDescriptor" }
+
+components:
+  schemas:
+    Health:
+      type: object
+      description: Service health envelope.
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, down]
+          description: Liveness state.
+        version:
+          type: string
+          description: Drift Sentinel package version.
+        uptime_seconds:
+          type: integer
+          minimum: 0
+          description: Seconds since the worker started.
+
+    AuditRequest:
+      type: object
+      description: Request payload for POST /audits.
+      required: [spec_url]
+      properties:
+        spec_url:
+          type: string
+          format: uri
+          description: Public URL of the OpenAPI spec to audit.
+        previous_spec_url:
+          type: string
+          format: uri
+          description: Optional previous version for breaking-change detection.
+        live_url:
+          type: string
+          format: uri
+          description: Optional base URL of the live API for runtime drift detection.
+        live_headers:
+          type: object
+          additionalProperties: { type: string }
+          description: HTTP headers sent on every probe of the live API (auth, gate keys).
+        fail_on:
+          type: object
+          description: Threshold map; if any threshold is breached, the audit is marked failed.
+          properties:
+            adi:        { type: number, minimum: 0, maximum: 100 }
+            breaking:   { type: integer, minimum: 0 }
+            vacuum-error: { type: integer, minimum: 0 }
+            fuzz:       { type: integer, minimum: 0 }
+
+    AuditAccepted:
+      type: object
+      description: Acknowledgement that an audit has been queued.
+      required: [audit_id, status]
+      properties:
+        audit_id:
+          type: string
+          format: uuid
+          description: Server-assigned identifier for this audit.
+        status:
+          type: string
+          enum: [queued, running, complete, failed]
+          description: Current processing state.
+        queued_at:
+          type: string
+          format: date-time
+          description: Server timestamp when the audit was queued.
+
+    AuditReport:
+      type: object
+      description: Signed audit result.
+      required: [audit_id, drift_score, signature]
+      properties:
+        audit_id:
+          type: string
+          format: uuid
+          description: Identifier matching the original request.
+        drift_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: ADI 0-100. 100 is clean. 0 is catastrophic.
+        counts:
+          type: object
+          description: Raw counts feeding into the Drift Score.
+          properties:
+            breaking:     { type: integer, minimum: 0 }
+            vacuum-error: { type: integer, minimum: 0 }
+            vacuum-warn:  { type: integer, minimum: 0 }
+            fuzz:         { type: integer, minimum: 0 }
+        breaches:
+          type: array
+          items: { type: string }
+          description: Strings describing each fail-on threshold that was breached.
+        signature:
+          $ref: "#/components/schemas/Signature"
+        report_pdf_url:
+          type: string
+          format: uri
+          description: URL of the signed PDF report.
+
+    Signature:
+      type: object
+      description: Ed25519 detached signature over the canonical report JSON.
+      required: [alg, sig, sha256, pubkey_pem]
+      properties:
+        alg:
+          type: string
+          enum: [ed25519]
+          description: Signature algorithm.
+        sig:
+          type: string
+          pattern: "^[0-9a-f]+$"
+          description: Hex-encoded signature bytes.
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: SHA-256 of the canonical report JSON before signing.
+        pubkey_pem:
+          type: string
+          description: PEM-encoded public key the signature verifies against.
+
+    KeyDescriptor:
+      type: object
+      description: Public descriptor of a tenant signing keypair.
+      required: [key_id, alg, pubkey_pem, created_at]
+      properties:
+        key_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this keypair.
+        alg:
+          type: string
+          enum: [ed25519]
+          description: Signature algorithm.
+        pubkey_pem:
+          type: string
+          description: PEM-encoded public key.
+        created_at:
+          type: string
+          format: date-time
+          description: When this keypair was generated.
+
+    Error:
+      type: object
+      description: Standard error envelope.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code.
+        message:
+          type: string
+          description: Human-readable error description.
+        request_id:
+          type: string
+          description: Server-assigned trace id for this request.
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
