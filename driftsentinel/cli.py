@@ -244,7 +244,7 @@ def cmd_keygen(args):
 
 
 def main():
-    p = argparse.ArgumentParser(prog="oas-sentinel")
+    p = argparse.ArgumentParser(prog=Path(sys.argv[0]).name)
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("audit")
     for flag, kw in [("spec", {}), ("--prev", {}), ("--url", {}), ("--header", {}),
